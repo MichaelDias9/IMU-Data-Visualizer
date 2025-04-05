@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+      {
+          "label": "Build with GCC",
+          "type": "shell",
+          "command": "g++",
+          "args": [
+              "-I", "H:/Libraries/boost_1_87_0",
+              "-o", "output.exe",
+              "main.cpp"
+          ],
+          "group": {
+              "kind": "build",
+              "isDefault": true
+          },
+          "problemMatcher": ["$gcc"]
+      }
+  ]
+}
