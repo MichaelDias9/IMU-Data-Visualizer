@@ -13,24 +13,13 @@
 
 #include <cstdio>
 #include <cmath>
-
-int AccelerationXFormatter(double value, char* buff, int size, void* user_data) {
-  double int_part;
-  double frac_part = std::modf(value, &int_part);
-  const double epsilon = 1e-8;
-  if (std::abs(frac_part) < epsilon) {
-      return snprintf(buff, size, "%.0f", value);
-  } else {
-      buff[0] = '\0'; // Empty string for decimal numbers
-      return 0;
-  }
-}
+#include <algorithm>
 
 void runRaylibApp()
 { 
   #pragma region INTIALIZE
   // Intialize Window
-  const int screenWidth = 1680;
+  const int screenWidth = 1750;
   const int screenHeight = 960;
   InitWindow(screenWidth, screenHeight, "Drone Attitude Estimation");
   SetTargetFPS(60);
@@ -39,9 +28,8 @@ void runRaylibApp()
   rlImGuiSetup(true);
   ImPlot::CreateContext();
   // Initialize data buffers for plotting
-  // Store 300 points, but only display the most recent 100
-  const size_t totalBufferSize = 300;
-  const size_t displayWindowSize = 100;
+  size_t totalBufferSize = 256;
+  size_t displayWindowSize = 256;
   
   SensorDataBuffer accelData(totalBufferSize, displayWindowSize);
   SensorDataBuffer angularVelData(totalBufferSize, displayWindowSize);
@@ -59,6 +47,10 @@ void runRaylibApp()
   Model droneModel = LoadModel("resources/tinker.obj");
   float modelScale = 0.08f;
   
+  // Calibration state variables
+  bool gyroCalibrated = false;
+  bool accelCalibrated = false;
+  
   #pragma endregion
 
   // --- MAIN LOOP ---
@@ -72,25 +64,30 @@ void runRaylibApp()
     
     // Get sensor data from SharedData
     Vector3f accel = SharedData::Instance().getAcceleration();
+    Vector3f calibratedAccel = SharedData::Instance().getCalibratedAcceleration();
+    Vector3f accelOffset = SharedData::Instance().getAccelCalibrationOffset();
     Vector3f angularVel = SharedData::Instance().getRotationRate();
+    Vector3f calibratedAngularVel = SharedData::Instance().getCalibratedRotationRate();
+    Vector3f gyroOffset = SharedData::Instance().getGyroCalibrationOffset();
     Vector3f magneticField = SharedData::Instance().getMagneticField();
 
     // Update all buffers
     currentTime += GetFrameTime();
     timeBuffer.addValue(currentTime);
-    accelData.x.addValue(accel.x);
-    accelData.y.addValue(accel.y);
-    accelData.z.addValue(accel.z);
-    angularVelData.x.addValue(angularVel.x);
-    angularVelData.y.addValue(angularVel.y);
-    angularVelData.z.addValue(angularVel.z);
+    accelData.x.addValue(calibratedAccel.x);
+    accelData.y.addValue(calibratedAccel.y);
+    accelData.z.addValue(calibratedAccel.z);
+    // Store the calibrated gyro data in the buffers for plotting
+    angularVelData.x.addValue(calibratedAngularVel.x);
+    angularVelData.y.addValue(calibratedAngularVel.y);
+    angularVelData.z.addValue(calibratedAngularVel.z);
     magFieldData.x.addValue(magneticField.x);
     magFieldData.y.addValue(magneticField.y);
     magFieldData.z.addValue(magneticField.z);
 
     // Get the updated attitude as a rotation matrix
     Attitude att = SharedData::Instance().getAttitude();
-    Quaternion Quat = {att.x, att.y, att.z, att.w};
+    Quaternion Quat = {att.y, att.x, att.z, att.w};
     Matrix rotMat = QuaternionToMatrix(Quat);
 
     // Update vectors of data points to be displayed
@@ -110,7 +107,7 @@ void runRaylibApp()
 
     #pragma region RaylibArea   // --- RAYLIB PANEL ---
     // Set viewport to bottom-right quadrant of screen
-    rlViewport(2*screenWidth/3, 0, screenWidth/3, screenHeight/2);
+    rlViewport(screenWidth/2, 0, screenWidth/2, screenHeight/2);
     BeginMode3D(camera);
       
     // Draw Grid on X-Y plane
@@ -124,6 +121,8 @@ void runRaylibApp()
     DrawLine3D(Vector3{0.0f, 0.0f, 0.0f}, Vector3{0.0f, 0.0f, 10.0f}, BLUE);   // Z-axis
     // Draw Drone
     rlPushMatrix();
+      // Rotate to match axis
+      rlRotatef(-90.0f, 0.0f, 0.0f, 1.0f);
       // Apply the runtime rotation
       rlMultMatrixf(MatrixToFloat(rotMat));
       // Draw the model at its local (0,0,0)
@@ -139,7 +138,7 @@ void runRaylibApp()
     #pragma region ImPlotArea   // --- IMPLOT PANEL ---
     // Render on left side of window
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(screenWidth*2/3, screenHeight), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(screenWidth/2, screenHeight), ImGuiCond_Always);
     
     ImGui::Begin("Sensor Data", nullptr, 
       ImGuiWindowFlags_NoMove | 
@@ -196,7 +195,7 @@ void runRaylibApp()
       ImGui::Dummy(ImVec2(0, ImGui::GetStyle().ItemSpacing.y));
       
       // ANGULAR VELOCITY PLOT 
-      if (ImPlot::BeginPlot("Angular Velocity", ImVec2(-1, plot_height))) {
+      if (ImPlot::BeginPlot("Angular Velocity (Calibrated)", ImVec2(-1, plot_height))) {
         ImPlot::SetupAxes("Time (s)", "rad/s");
         ImPlot::SetupAxisFormat(ImAxis_X1, AccelerationXFormatter);
         if (displayTime.size() > 1) {
@@ -219,35 +218,173 @@ void runRaylibApp()
       
     ImGui::End();
     #pragma endregion
-    #pragma region ImGUIArea    // --- IMGUI PANEL --- 
-    // --- SENSOR AVERAGES PANEL (TOP RIGHT) ---
-    ImGui::SetNextWindowPos(ImVec2(screenWidth*2/3, 0), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(screenWidth/3, screenHeight/2), ImGuiCond_Always);
+    #pragma region ImGUIArea    // --- IMGUI PANEL (TOP RIGHT) --- 
+
+    ImGui::SetNextWindowPos(ImVec2(screenWidth/2, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(screenWidth/2, screenHeight/2), ImGuiCond_Always);
     
     ImGui::Begin("Sensor Averages", nullptr, 
         ImGuiWindowFlags_NoMove | 
         ImGuiWindowFlags_NoResize | 
         ImGuiWindowFlags_NoCollapse
     );
-      // Show buffer info
-      ImGui::Text("Storage: %d points | Display: %d points", 
-                totalBufferSize, displayWindowSize);
+
+      static int newTotal = totalBufferSize, newDisplay = displayWindowSize;
+
+      ImGui::Text("Buffer Configuration:");
+      ImGui::InputInt("Total Points", &newTotal);
+      ImGui::InputInt("Display Points", &newDisplay);
+
+      // Clamp values
+      newTotal = std::max(1, newTotal);
+      newDisplay = std::clamp(newDisplay, 1, newTotal);
+
+      if (ImGui::Button("Apply")) {
+          totalBufferSize = newTotal;
+          displayWindowSize = newDisplay;
+          accelData.setBufferSize(totalBufferSize);
+          angularVelData.setBufferSize(totalBufferSize);
+          magFieldData.setBufferSize(totalBufferSize);
+          timeBuffer.setMaxSize(totalBufferSize);
+          accelData.setDisplaySize(displayWindowSize);
+          angularVelData.setDisplaySize(displayWindowSize);
+          magFieldData.setDisplaySize(displayWindowSize);
+          timeBuffer.setDisplaySize(displayWindowSize);
+      }
+
+      if (ImGui::Button("Reset")) {
+        newTotal = 256;
+        newDisplay = 256;
+        
+        // Force immediate application of reset values
+        totalBufferSize = newTotal;
+        displayWindowSize = newDisplay;
+    
+        accelData.setBufferSize(totalBufferSize);
+        angularVelData.setBufferSize(totalBufferSize);
+        magFieldData.setBufferSize(totalBufferSize);
+        timeBuffer.setMaxSize(totalBufferSize);
+    
+        accelData.setDisplaySize(displayWindowSize);
+        angularVelData.setDisplaySize(displayWindowSize);
+        magFieldData.setDisplaySize(displayWindowSize);
+        timeBuffer.setDisplaySize(displayWindowSize);
+      }
+
       ImGui::Text("Running Averages (Based on all %d samples)", totalBufferSize);
       ImGui::Separator();
       
       ImGui::Text("Acceleration Averages (m/s²):");
       ImGui::Indent(20.0f);
+
+      // Create a row with the average value and the calibration button side by side
       ImGui::Text("X-axis: %.3f", accelData.x.getAverage());
+      ImGui::SameLine(ImGui::GetWindowWidth() * 0.7f);
+      if (ImGui::Button("Remove Bias##AccelX")) {
+          Vector3f offset = SharedData::Instance().getAccelCalibrationOffset();
+          offset.x = offset.x + accelData.x.getAverage();
+          SharedData::Instance().setAccelCalibrationOffset(offset.x, offset.y, offset.z);
+          accelCalibrated = true;
+      }
+      
       ImGui::Text("Y-axis: %.3f", accelData.y.getAverage());
+      ImGui::SameLine(ImGui::GetWindowWidth() * 0.7f);
+      if (ImGui::Button("Remove Bias##AccelY")) {
+          Vector3f offset = SharedData::Instance().getAccelCalibrationOffset();
+          offset.y = offset.y + accelData.y.getAverage();
+          SharedData::Instance().setAccelCalibrationOffset(offset.x, offset.y, offset.z);
+          accelCalibrated = true;
+      }
+      
       ImGui::Text("Z-axis: %.3f", accelData.z.getAverage());
+      ImGui::SameLine(ImGui::GetWindowWidth() * 0.7f);
+      if (ImGui::Button("Remove Bias##AccelZ")) {
+          Vector3f offset = SharedData::Instance().getAccelCalibrationOffset();
+          offset.z = offset.z + accelData.z.getAverage() - 1.0f;
+          SharedData::Instance().setAccelCalibrationOffset(offset.x, offset.y, offset.z);
+          accelCalibrated = true;
+      }
+      
+      // Add a button to remove bias from all axes at once
+      if (ImGui::Button("Remove Bias from All Axes##Accel")) {
+          Vector3f offset = SharedData::Instance().getAccelCalibrationOffset();
+          offset.x = offset.x + accelData.x.getAverage();
+          offset.y = offset.y + accelData.y.getAverage();
+          offset.z = offset.z + accelData.z.getAverage() - 1.0f;
+          SharedData::Instance().setAccelCalibrationOffset(offset.x, offset.y, offset.z);
+          accelCalibrated = true;
+      }
+      
+      // Add a button to reset all calibration offsets
+      if (ImGui::Button("Reset All Calibration##Accel")) {
+          SharedData::Instance().setAccelCalibrationOffset(0.0f, 0.0f, 0.0f);
+          accelCalibrated = false;
+      }
+      
+      // Display current calibration offsets if calibrated
+      if (accelCalibrated) {
+          ImGui::Text("Current Calibration Offsets:");
+          ImGui::Text("X: %.3f, Y: %.3f, Z: %.3f", 
+                      accelOffset.x, accelOffset.y, accelOffset.z);
+      }
+
       ImGui::Unindent(20.0f);
       
       ImGui::Separator();
       ImGui::Text("Angular Velocity Averages (rad/s):");
       ImGui::Indent(20.0f);
+      
+      // Create a row with the average value and the calibration button side by side
       ImGui::Text("X-axis: %.3f", angularVelData.x.getAverage());
+      ImGui::SameLine(ImGui::GetWindowWidth() * 0.7f);
+      if (ImGui::Button("Remove Bias##GyroX")) {
+          Vector3f offset = SharedData::Instance().getGyroCalibrationOffset();
+          offset.x = offset.x + angularVelData.x.getAverage();
+          SharedData::Instance().setGyroCalibrationOffset(offset.x, offset.y, offset.z);
+          gyroCalibrated = true;
+      }
+      
       ImGui::Text("Y-axis: %.3f", angularVelData.y.getAverage());
+      ImGui::SameLine(ImGui::GetWindowWidth() * 0.7f);
+      if (ImGui::Button("Remove Bias##GyroY")) {
+          Vector3f offset = SharedData::Instance().getGyroCalibrationOffset();
+          offset.y = offset.y + angularVelData.y.getAverage();
+          SharedData::Instance().setGyroCalibrationOffset(offset.x, offset.y, offset.z);
+          gyroCalibrated = true;
+      }
+      
       ImGui::Text("Z-axis: %.3f", angularVelData.z.getAverage());
+      ImGui::SameLine(ImGui::GetWindowWidth() * 0.7f);
+      if (ImGui::Button("Remove Bias##GyroZ")) {
+          Vector3f offset = SharedData::Instance().getGyroCalibrationOffset();
+          offset.z = offset.z + angularVelData.z.getAverage();
+          SharedData::Instance().setGyroCalibrationOffset(offset.x, offset.y, offset.z);
+          gyroCalibrated = true;
+      }
+      
+      // Add a button to remove bias from all axes at once
+      if (ImGui::Button("Remove Bias from All Axes##Gyro")) {
+          Vector3f offset = SharedData::Instance().getGyroCalibrationOffset();
+          offset.x = offset.x + angularVelData.x.getAverage();
+          offset.y = offset.y + angularVelData.y.getAverage();
+          offset.z = offset.z + angularVelData.z.getAverage();
+          SharedData::Instance().setGyroCalibrationOffset(offset.x, offset.y, offset.z);
+          gyroCalibrated = true;
+      }
+      
+      // Add a button to reset all calibration offsets
+      if (ImGui::Button("Reset All Calibration##Gyro")) {
+          SharedData::Instance().setGyroCalibrationOffset(0.0f, 0.0f, 0.0f);
+          gyroCalibrated = false;
+      }
+      
+      // Display current calibration offsets if calibrated
+      if (gyroCalibrated) {
+          ImGui::Text("Current Calibration Offsets:");
+          ImGui::Text("X: %.3f, Y: %.3f, Z: %.3f", 
+                      gyroOffset.x, gyroOffset.y, gyroOffset.z);
+      }
+      
       ImGui::Unindent(20.0f);
       
       ImGui::Separator();
@@ -285,4 +422,16 @@ void runRaylibApp()
 
   // Close the window
   CloseWindow();
+}
+
+int AccelerationXFormatter(double value, char* buff, int size, void* user_data) {
+  double int_part;
+  double frac_part = std::modf(value, &int_part);
+  const double epsilon = 1e-8;
+  if (std::abs(frac_part) < epsilon) {
+      return snprintf(buff, size, "%.0f", value);
+  } else {
+      buff[0] = '\0'; // Empty string for decimal numbers
+      return 0;
+  }
 }

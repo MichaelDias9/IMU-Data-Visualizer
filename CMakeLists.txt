@@ -5,79 +5,67 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# --- Boost configuration --- #
-set(Boost_NO_BOOST_CMAKE ON)
-set(BOOST_ROOT "H:/Libraries/boost_1_87_0")
-set(BOOST_INCLUDEDIR "H:/Libraries/boost_1_87_0")
-set(BOOST_LIBRARYDIR "H:/Libraries/boost_1_87_0/stage/lib")
+# --- Find boost --- #
+if (WIN32)
+   set(Boost_NO_BOOST_CMAKE ON)
+   set(BOOST_ROOT "H:/Libraries/boost_1_87_0")
+   set(BOOST_INCLUDEDIR "H:/Libraries/boost_1_87_0")
+   set(BOOST_LIBRARYDIR "H:/Libraries/boost_1_87_0/stage/lib")
+endif()
+
 find_package(Boost 1.87.0 REQUIRED COMPONENTS system thread)
 
-# --- Fetch raylib --- #
+# --- Raylib --- #
 include(FetchContent)
 FetchContent_Declare(
-    raylib
-    GIT_REPOSITORY https://github.com/raysan5/raylib.git
-    GIT_TAG master
-    CMAKE_ARGS 
-        -DBUILD_SHARED_LIBS=OFF
-        -DUSE_EXTERNAL_GLFW=OFF
-        -DSUPPORT_WINMM_HIGH_RES_TIMER=OFF
+   raylib
+   GIT_REPOSITORY https://github.com/raysan5/raylib.git
+   GIT_TAG master
+   CMAKE_ARGS
+       -DBUILD_SHARED_LIBS=OFF
+       -DUSE_EXTERNAL_GLFW=OFF
+       -DSUPPORT_WINMM_HIGH_RES_TIMER=OFF
 )
 FetchContent_MakeAvailable(raylib)
 
-# --- Build ImGui from source --- #
-file(GLOB IMGUI_SOURCES
-    "third_party/imgui/*.cpp"
-    "third_party/imgui/backends/imgui_impl_glfw.cpp"  # Include necessary backends if required
-)
+# --- ImGui --- #
+file(GLOB IMGUI_SOURCES third_party/imgui/*.cpp)
 add_library(imgui STATIC ${IMGUI_SOURCES})
-target_include_directories(imgui PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/backends
-)
+target_include_directories(imgui PUBLIC third_party/imgui)
 
-# +++ Add ImPlot library +++ #
-file(GLOB IMPLOT_SOURCES "third_party/implot/*.cpp")
+# --- ImPlot --- #
+file(GLOB IMPLOT_SOURCES third_party/implot/*.cpp)
 add_library(implot STATIC ${IMPLOT_SOURCES})
-target_include_directories(implot PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot
-)
+target_include_directories(implot PUBLIC third_party/implot)
 target_link_libraries(implot PRIVATE imgui)
 
-# --- rlImGui static library --- #
+# --- rlImGui --- #
 add_library(rlImGui STATIC third_party/rlImGui/rlImGui.cpp)
 target_include_directories(rlImGui PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/rlImGui
-    ${raylib_SOURCE_DIR}/src
-    ${imgui_SOURCE_DIR}
+   third_party/rlImGui
+   ${raylib_SOURCE_DIR}/src  # Needed for raylib internal headers
 )
-target_link_libraries(rlImGui PUBLIC raylib imgui implot)
+target_link_libraries(rlImGui PUBLIC raylib imgui)
+
 
 # --- Main executable --- #
-add_executable(IMUTool
-    src/main.cpp
-    src/WebSocketServer.cpp
-    src/RaylibApp.cpp
-    src/ComplementaryFilter.cpp
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
+add_executable(${PROJECT_NAME} ${SOURCES})
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+   include
+   ${Boost_INCLUDE_DIRS}
+)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+   Boost::system
+   Boost::thread
+   rlImGui
+   implot  # imgui linked transitively
 )
 
-target_include_directories(IMUTool PRIVATE 
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${Boost_INCLUDE_DIRS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui  
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot
-)
-target_link_libraries(IMUTool PRIVATE 
-    Boost::system
-    Boost::thread
-    rlImGui 
-    imgui
-    implot
-)
-
-# --- Copy resources --- #
-add_custom_command(TARGET IMUTool POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/resources
-        $<TARGET_FILE_DIR:IMUTool>/resources
+# --- Resources --- #
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+   COMMAND ${CMAKE_COMMAND} -E copy_directory
+       ${CMAKE_SOURCE_DIR}/resources
+       $<TARGET_FILE_DIR:IMUTool>/resources
 )

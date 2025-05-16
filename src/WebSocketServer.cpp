@@ -39,7 +39,7 @@ void WebSocketSession::onRead(beast::error_code ec, std::size_t bytes_transferre
 
     // Extract message from buffer
     std::string message(static_cast<char*>(buffer_.data().data()), bytes_transferred);
-    //std::cout << "Received: " << message << std::endl;
+    std::cout << "Received: " << message << std::endl;
 
     // Clear the Beast buffer
     buffer_.consume(buffer_.size());

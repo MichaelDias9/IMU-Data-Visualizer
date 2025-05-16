@@ -44,7 +44,7 @@ int main() {
       std::thread filterThread(complementaryFilterThread);
 
       runRaylibApp();
-
+ 
       filterRunning = false;
       ioc.stop();
 

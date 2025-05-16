@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <numeric>
 
 // Helper class to manage a circular buffer with running average and display window
 class RingBuffer {
@@ -59,16 +60,42 @@ public:
     size_t size() const {
         return data.size();
     }
+
+    void setMaxSize(size_t newSize) {
+      if (newSize < maxSize && data.size() > newSize) {
+          size_t removeCount = data.size() - newSize;
+          runningSum -= std::accumulate(data.begin(), data.begin() + removeCount, 0.0f);
+          data.erase(data.begin(), data.begin() + removeCount);
+      }
+      maxSize = newSize;
+      displaySize = std::min(displaySize, maxSize);
+    }
+
+    void setDisplaySize(size_t newDisplaySize) {
+        displaySize = std::min(newDisplaySize, maxSize);
+    }
 };
 
 // Helper struct to manage 3-axis sensor data
 struct SensorDataBuffer {
-    RingBuffer x;
-    RingBuffer y;
-    RingBuffer z;
+  RingBuffer x;
+  RingBuffer y;
+  RingBuffer z;
 
-    SensorDataBuffer(size_t bufferSize, size_t displaySize = 0) 
-        : x(bufferSize, displaySize), 
-          y(bufferSize, displaySize), 
-          z(bufferSize, displaySize) {}
+  SensorDataBuffer(size_t bufferSize, size_t displaySize = 0) 
+    : x(bufferSize, displaySize), 
+      y(bufferSize, displaySize), 
+      z(bufferSize, displaySize) {}
+
+    void setBufferSize(size_t newSize) {
+      x.setMaxSize(newSize);
+      y.setMaxSize(newSize);
+      z.setMaxSize(newSize);
+    }
+  
+    void setDisplaySize(size_t newDisplaySize) {
+        x.setDisplaySize(newDisplaySize);
+        y.setDisplaySize(newDisplaySize);
+        z.setDisplaySize(newDisplaySize);
+    }
 };
