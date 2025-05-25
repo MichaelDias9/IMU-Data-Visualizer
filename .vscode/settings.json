@@ -112,6 +112,15 @@
     "xtree": "cpp",
     "xutility": "cpp",
     "*.ipp": "cpp",
-    "resumable": "cpp"
+    "resumable": "cpp",
+    "__bit_reference": "cpp",
+    "__hash_table": "cpp",
+    "__locale": "cpp",
+    "__node_handle": "cpp",
+    "__split_buffer": "cpp",
+    "__verbose_abort": "cpp",
+    "print": "cpp",
+    "string_view": "cpp",
+    "__tree": "cpp"
   }
 }
