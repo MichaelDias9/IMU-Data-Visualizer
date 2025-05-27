@@ -13,25 +13,13 @@ class SensorPlot {
 private:
     std::string m_name;
     ThreadSafeRingBuffer<Capacity>& m_data_buffer_ref;
-    ThreadSafeRingBuffer<Capacity>& m_time_buffer_ref;
+    std::array<float, Capacity>& m_time_buffer_ref;
     mutable float m_y_min; // Track Y-axis limits
     mutable float m_y_max;
     static constexpr size_t MAX_PLOT_POINTS = 1000; // Downsampling threshold 
 
-    // Custom formatter function for time axis
-    static int TimeFormatter(double value, char* buff, int size, void* data) {
-        // Only show labels for whole seconds
-        if (std::fmod(value, 1.0) == 0.0) {
-            return snprintf(buff, size, "%.0fs", value);
-        } else {
-            // Return empty string for non-whole seconds
-            buff[0] = '\0';
-            return 0;
-        }
-    }
-
 public:
-    SensorPlot(const std::string name, ThreadSafeRingBuffer<Capacity>& buffer, ThreadSafeRingBuffer<Capacity>& timeBuffer)
+    SensorPlot(const std::string name, ThreadSafeRingBuffer<Capacity>& buffer, std::array<float, Capacity>& timeBuffer)
         : m_name(name), m_data_buffer_ref(buffer), m_time_buffer_ref(timeBuffer),
           m_y_min(-1.1f), m_y_max(1.1f) {}
 
@@ -42,13 +30,8 @@ public:
             const float* zDataPtr = nullptr;
             m_data_buffer_ref.getRecentPointers(Capacity, &xDataPtr, &yDataPtr, &zDataPtr);
 
-            const float* timeXPtr = nullptr;
-            const float* timeYPtr = nullptr;
-            const float* timeZPtr = nullptr;
-            m_time_buffer_ref.getRecentPointers(Capacity, &timeXPtr, &timeYPtr, &timeZPtr);
             
-            if (xDataPtr && yDataPtr && zDataPtr && timeXPtr) {
-                float latest_time = timeXPtr[Capacity-1];
+            if (xDataPtr && yDataPtr && zDataPtr) {
                 float displayed_range = bufferSeconds / horizontal_zoom;
 
                 // Configure X axis label formatter
@@ -56,8 +39,8 @@ public:
 
                 // Configure axes
                 ImPlot::SetupAxes("Time (s)", "Value");
-                ImPlot::SetupAxisLimits(ImAxis_X1, latest_time - displayed_range, latest_time, ImGuiCond_Always);
-                ImPlot::SetupAxisLimits(ImAxis_Y1, m_y_min, m_y_max, ImGuiCond_Always);
+                ImPlot::SetupAxisLimits(ImAxis_X1, -displayed_range, 0, ImGuiCond_Always);
+                ImPlot::SetupAxisLimits(ImAxis_Y1, m_y_min, m_y_max, ImGuiCond_Once);
 
                 // Handle Y-axis zoom 
                 if (ImPlot::IsPlotHovered() && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift) {
@@ -67,7 +50,7 @@ public:
                         float center = (m_y_min + m_y_max) * 0.5f;
                         float range = m_y_max - m_y_min;
                         float new_range = range * (1.0f - delta);
-                        new_range = std::clamp(new_range, 0.1f, 10.0f);
+                        new_range = std::clamp(new_range, 0.1f, 100.0f);
                         m_y_min = center - new_range * 0.5f;
                         m_y_max = center + new_range * 0.5f;
                     }
@@ -75,9 +58,9 @@ public:
 
                 // Plot data 
                 if (Capacity <= MAX_PLOT_POINTS) {
-                    ImPlot::PlotLine("X", timeXPtr, xDataPtr, Capacity);
-                    ImPlot::PlotLine("Y", timeYPtr, yDataPtr, Capacity);
-                    ImPlot::PlotLine("Z", timeZPtr, zDataPtr, Capacity);
+                    ImPlot::PlotLine("X", m_time_buffer_ref.data(), xDataPtr, Capacity);
+                    ImPlot::PlotLine("Y", m_time_buffer_ref.data(), yDataPtr, Capacity);
+                    ImPlot::PlotLine("Z", m_time_buffer_ref.data(), zDataPtr, Capacity);
                 } else {
                     // Downsample by taking every nth point
                     size_t step = Capacity / MAX_PLOT_POINTS;
@@ -88,7 +71,7 @@ public:
                     sampledZ.reserve(MAX_PLOT_POINTS);
                     
                     for (size_t i = 0; i < Capacity; i += step) {
-                        sampledTime.push_back(timeXPtr[i]);
+                        sampledTime.push_back(m_time_buffer_ref[i]);
                         sampledX.push_back(xDataPtr[i]);
                         sampledY.push_back(yDataPtr[i]);
                         sampledZ.push_back(zDataPtr[i]);
@@ -97,11 +80,22 @@ public:
                     ImPlot::PlotLine("X", sampledTime.data(), sampledX.data(), sampledTime.size());
                     ImPlot::PlotLine("Y", sampledTime.data(), sampledY.data(), sampledTime.size());
                     ImPlot::PlotLine("Z", sampledTime.data(), sampledZ.data(), sampledTime.size());                    
-                    
-                    std::cout << "Plotting " << sampledTime.size() << " points" << std::endl;
                 }
             }
             ImPlot::EndPlot();
+        }
+    }
+
+private:
+    // Custom formatter function for time axis
+    static int TimeFormatter(double value, char* buff, int size, void* data) {
+        // Only show labels for whole seconds
+        if (std::fmod(value, 1.0) == 0.0) {
+            return snprintf(buff, size, "%.0fs", value);
+        } else {
+            // Return empty string for non-whole seconds
+            buff[0] = '\0';
+            return 0;
         }
     }
 };

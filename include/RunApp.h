@@ -2,6 +2,8 @@
 #include "Config.h"
 #include "ThreadSafeRingBuffer.h"
 
-void runApp(GyroBuffer &gyroBuffer, AccelBuffer &accelBuffer, 
-            MagBuffer &magBuffer, GyroBuffer& gyroTimeBuffer,
-            AccelBuffer& accelTimeBuffer, MagBuffer& magTimeBuffer);
+void runApp(GyroBuffer &gyroBuffer, AccelBuffer &accelBuffer, MagBuffer &magBuffer, 
+            std::array<float, gyroBufferSize>& gyroTimeBuffer, 
+            std::array<float, accelBufferSize>& accelTimeBuffer, 
+            std::array<float, magBufferSize>& magTimeBuffer
+            );

@@ -1,20 +1,19 @@
 #include "RunApp.h"
+#include "Config.h"
 #include "RayLibScene.h"
 #include "ImPlotPanel.h"
 #include "ImGuiPanel.h"
-#include "Config.h"
 #include "ThreadSafeRingBuffer.h"
 
-#include "imgui.h"
 #include "rlImGui.h"
+#include "imgui.h"
 #include "implot.h"
 
-#include <cstdio>
-#include <cmath>
 
-void runApp(GyroBuffer &gyroBuffer, AccelBuffer &accelBuffer, 
-            MagBuffer &magBuffer, GyroBuffer& gyroTimeBuffer,
-            AccelBuffer& accelTimeBuffer, MagBuffer& magTimeBuffer) 
+void runApp(GyroBuffer &gyroBuffer, AccelBuffer& accelBuffer, MagBuffer& magBuffer, 
+            std::array<float, gyroBufferSize>& gyroTimeBuffer, 
+            std::array<float, accelBufferSize>& accelTimeBuffer, 
+            std::array<float, magBufferSize>& magTimeBuffer) 
 { 
   // Initialize window
   InitWindow(screenWidth, screenHeight, "IMU + Attitude Estimation");
@@ -27,6 +26,9 @@ void runApp(GyroBuffer &gyroBuffer, AccelBuffer &accelBuffer,
   // Initialize Plots 
   rlImGuiSetup(true);
   ImPlot::CreateContext();
+  // Enable 32 bit vertex indices for more than 64K vertices
+  ImGuiIO& io = ImGui::GetIO();
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
   ImPlotPanel plotPanel(0, 0, screenWidth/2, screenHeight, 
                         gyroBuffer, accelBuffer, magBuffer, gyroTimeBuffer, accelTimeBuffer, magTimeBuffer);
 

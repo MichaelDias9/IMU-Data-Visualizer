@@ -4,9 +4,10 @@ ImPlotPanel::ImPlotPanel(int posX, int posY, int width, int height,
                          GyroBuffer& gyroBuffer_ref,
                          AccelBuffer& accelBuffer_ref, 
                          MagBuffer& magBuffer_ref,
-                         GyroBuffer& gyroTimeBuffer_ref,
-                         AccelBuffer& accelTimeBuffer_ref,
-                         MagBuffer& magTimeBuffer_ref)
+                         std::array<float, gyroBufferSize>& gyroTimeBuffer_ref,
+                         std::array<float, accelBufferSize>& accelTimeBuffer_ref,
+                         std::array<float, magBufferSize>& magTimeBuffer_ref)
+
     : m_posX(posX), m_posY(posY), m_width(width), m_height(height),
       m_vertical_zoom(1.0f), m_horizontal_zoom(1.0f),
       m_gyroPlot("Gyro", gyroBuffer_ref, gyroTimeBuffer_ref),

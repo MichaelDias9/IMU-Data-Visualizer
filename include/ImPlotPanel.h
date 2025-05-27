@@ -27,9 +27,10 @@ public:
                 GyroBuffer& gyroBuffer_ref,
                 AccelBuffer& accelBuffer_ref, 
                 MagBuffer& magBuffer_ref,
-                GyroBuffer& gyroTimeBuffer,
-                AccelBuffer& accelTimeBuffer,
-                MagBuffer& magTimeBuffer);
+                std::array<float, gyroBufferSize>& gyroTimeBuffer_ref,
+                std::array<float, accelBufferSize>& accelTimeBuffer_ref,
+                std::array<float, magBufferSize>& magTimeBuffer_ref
+                );
 
     void Draw();
 };
