@@ -7,12 +7,13 @@ ImPlotPanel::ImPlotPanel(int posX, int posY, int width, int height,
                          std::array<float, gyroBufferSize>& gyroTimeBuffer_ref,
                          std::array<float, accelBufferSize>& accelTimeBuffer_ref,
                          std::array<float, magBufferSize>& magTimeBuffer_ref)
-
-    : m_posX(posX), m_posY(posY), m_width(width), m_height(height),
-      m_vertical_zoom(1.0f), m_horizontal_zoom(1.0f),
-      m_gyroPlot("Gyro", gyroBuffer_ref, gyroTimeBuffer_ref),
-      m_accelPlot("Accel", accelBuffer_ref, accelTimeBuffer_ref),
-      m_magPlot("Mag", magBuffer_ref, magTimeBuffer_ref) {}
+                        :
+                         m_posX(posX), m_posY(posY), m_width(width), m_height(height),
+                         m_vertical_zoom(1.0f), m_horizontal_zoom(1.0f),
+                         m_gyroPlot("Gyro", gyroBuffer_ref, gyroTimeBuffer_ref),
+                         m_accelPlot("Accel", accelBuffer_ref, accelTimeBuffer_ref),
+                         m_magPlot("Mag", magBuffer_ref, magTimeBuffer_ref) 
+{}
 
 void ImPlotPanel::Draw() {
     ImGui::SetNextWindowPos(ImVec2(m_posX, m_posY), ImGuiCond_Always);
@@ -21,36 +22,45 @@ void ImPlotPanel::Draw() {
           ImGuiWindowFlags_NoMove | 
           ImGuiWindowFlags_NoResize | 
           ImGuiWindowFlags_NoCollapse |
-          ImGuiWindowFlags_AlwaysVerticalScrollbar |
-          ImGuiWindowFlags_NoScrollWithMouse
+          ImGuiWindowFlags_AlwaysVerticalScrollbar
     );
 
-    // Handle zoom inputs
-    if (ImGui::IsWindowHovered()) {
-        // Ctrl + Mouse Wheel: Vertical zoom (panel height)
-        if (ImGui::GetIO().KeyCtrl) {
-            m_vertical_zoom += ImGui::GetIO().MouseWheel * 0.1f;
-            m_vertical_zoom = std::clamp(m_vertical_zoom, min_zoom, max_zoom);
+    // ------ New Zoom Control Section ------
+    ImGui::BeginGroup();  // Group for zoom controls
+    ImGui::Text("Zoom Controls");
+    ImGui::Spacing();
+    
+    // Panel Zoom Slider
+    ImGui::Text("Plots Height:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    ImGui::SliderFloat("##PanelZoom", &m_vertical_zoom, min_zoom, max_zoom, "%.1fx");
 
-        }
-        // Shift + Mouse Wheel: Horizontal zoom (X-axis)
-        else if (ImGui::GetIO().KeyShift) {
-            m_horizontal_zoom += ImGui::GetIO().MouseWheel * 0.1f;
-            m_horizontal_zoom = std::clamp(m_horizontal_zoom, min_zoom, max_zoom);
-
-        }
+    // Time Axis Zoom Slider
+    ImGui::Text("Time Scale:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    ImGui::SliderFloat("##TimeZoom", &m_horizontal_zoom, min_zoom, max_zoom, "%.1fx");
+    
+    // Reset buttons
+    if (ImGui::Button("Reset Plot Heights")) {
+        m_vertical_zoom = 1.0f;
     }
-
-    // Display zoom info
-    ImGui::Text("Panel Zoom: %.1fx (Ctrl+Wheel)\nTime Axis Zoom %.1fx (Shift+Wheel)", 
-                m_vertical_zoom, m_horizontal_zoom);
+    ImGui::SameLine();
+    if (ImGui::Button("Reset Time Zoom")) {
+        m_horizontal_zoom = 1.0f;
+    }
+    
+    ImGui::EndGroup();
+    ImGui::Separator();
+    // ------ End Zoom Controls ------
 
     // Calculate plot heights with vertical zoom
     const float content_height = ImGui::GetContentRegionAvail().y;
     const float total_plots_height = content_height * m_vertical_zoom;
     const float plot_height = total_plots_height / 3.0f;
 
-    // Draw plots with individual heights and shared horizontal zoom
+    // Draw plots
     m_gyroPlot.Draw(plot_height, m_horizontal_zoom);
     ImGui::Dummy(ImVec2(0, ImGui::GetStyle().ItemSpacing.y));
     m_accelPlot.Draw(plot_height, m_horizontal_zoom);
