@@ -4,10 +4,11 @@
 
 const int screenWidth = 1280;
 const int screenHeight = 800;
+const int targetFrameRate = 120;
 
 constexpr int gyroFreq = 100;
-constexpr int accelFreq = 100;
-constexpr int magFreq = 100;
+constexpr int accelFreq = 200;
+constexpr int magFreq = 200;
 constexpr int bufferSeconds = 5;
 
 constexpr std::size_t gyroBufferSize = gyroFreq * bufferSeconds;

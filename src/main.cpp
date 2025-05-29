@@ -10,15 +10,46 @@
 #include "WebSocketSession.h"
 #include "RunApp.h"
 
+void prefillBuffers(GyroBuffer& gyroBuffer, AccelBuffer& accelBuffer, MagBuffer& magBuffer,
+    std::array<float, gyroBufferSize>& gyroTimesBuffer,
+    std::array<float, accelBufferSize>& accelTimesBuffer,
+    std::array<float, magBufferSize>& magTimesBuffer);
+
+void startExampleDataThreads(GyroBuffer& gyroBuffer, AccelBuffer& accelBuffer, MagBuffer& magBuffer);
+
 int main() {
     GyroBuffer gyroBuffer;
     AccelBuffer accelBuffer;
     MagBuffer magBuffer;
+
     std::array<float, gyroBufferSize> gyroTimesBuffer;
     std::array<float, accelBufferSize> accelTimesBuffer;
     std::array<float, magBufferSize> magTimesBuffer;
 
-    #pragma region Fill Buffers
+    prefillBuffers(gyroBuffer, accelBuffer, magBuffer,
+                         gyroTimesBuffer, accelTimesBuffer, magTimesBuffer);
+
+    startExampleDataThreads(gyroBuffer, accelBuffer, magBuffer); // Use for example data 
+
+    // Start WebSocket server
+    boost::asio::io_context ioc;
+    WebSocketSession server(ioc, 8000, gyroBuffer, accelBuffer, magBuffer);
+    server.run();
+    std::thread socketThread([&ioc]() { ioc.run(); });
+
+    // Launch application UI
+    runApp(gyroBuffer, accelBuffer, magBuffer,
+           gyroTimesBuffer, accelTimesBuffer, magTimesBuffer);
+
+    // Clean up
+    ioc.stop();
+    socketThread.join();
+}
+
+void prefillBuffers(GyroBuffer& gyroBuffer, AccelBuffer& accelBuffer, MagBuffer& magBuffer,
+                    std::array<float, gyroBufferSize>& gyroTimesBuffer,
+                    std::array<float, accelBufferSize>& accelTimesBuffer,
+                    std::array<float, magBufferSize>& magTimesBuffer) {
     // Pre-fill gyro data buffer
     std::vector<float> gyroX(gyroBufferSize, 0.0f);
     std::vector<float> gyroY(gyroBufferSize, 0.0f);
@@ -37,92 +68,65 @@ int main() {
     std::vector<float> magZ(magBufferSize, 0.0f);
     magBuffer.append(magX.data(), magY.data(), magZ.data(), magBufferSize);
 
-    // Pre-fill gyroscope time buffer
-    float timeStep = 1.0f / gyroFreq;
-    for (size_t i = 0; i < gyroBufferSize; ++i) {
+    // Time buffers
+    float timeStep;
+
+    timeStep = 1.0f / gyroFreq;
+    for (size_t i = 0; i < gyroBufferSize; ++i)
         gyroTimesBuffer[i] = -bufferSeconds + i * timeStep;
-    }
 
-    // Pre-fill accelerometer time buffer
     timeStep = 1.0f / accelFreq;
-    for (size_t i = 0; i < accelBufferSize; ++i) {
+    for (size_t i = 0; i < accelBufferSize; ++i)
         accelTimesBuffer[i] = -bufferSeconds + i * timeStep;
-    }
 
-    // Pre-fill magnetometer time buffer
     timeStep = 1.0f / magFreq;
-    for (size_t i = 0; i < magBufferSize; ++i) {
+    for (size_t i = 0; i < magBufferSize; ++i)
         magTimesBuffer[i] = -bufferSeconds + i * timeStep;
-    }
-    #pragma endregion
+}
 
-    // Optionally generate example data if testing without real data
-    /*
-    // Start data generation threads
-    std::thread gyroThread([&gyroBuffer]() {
-        const int frequency = gyroFreq;
-        const float sineFrequency = 2.0f; // 2Hz sine wave
-        auto interval = std::chrono::milliseconds(1000 / frequency);
+void startExampleDataThreads(GyroBuffer& gyroBuffer, AccelBuffer& accelBuffer, MagBuffer& magBuffer) {
+    std::thread([&gyroBuffer]() {
+        const int sampleFrequency = gyroFreq;
+        const float dataFrequency = 0.5f;
+        auto interval = std::chrono::milliseconds(1000 / sampleFrequency);
         float t = 0.0f;
         while (true) {
-            float xValue = std::sin(2 * M_PI * sineFrequency * t);
-            float yValue = std::cos(2 * M_PI * sineFrequency * t);
-            float zValue = std::tan(2 * M_PI * sineFrequency * t);
-
-            gyroBuffer.append(&xValue, &yValue, &zValue, 1);
+            float x = std::sin(2 * M_PI * dataFrequency * t);
+            float y = std::cos(2 * M_PI * dataFrequency * 0.5f * t);
+            float z = std::sin(2 * M_PI * dataFrequency * (1.0f / 3.0f) * t);
+            gyroBuffer.append(&x, &y, &z, 1);
             std::this_thread::sleep_for(interval);
-            t += 1.0f / frequency;
+            t += 1.0f / sampleFrequency;
         }
-    });
-    gyroThread.detach();
+    }).detach();
 
-    std::thread accelThread([&accelBuffer]() {
-        const int frequency = accelFreq;
-        const float sineFrequency = 2.0f; // 2Hz sine wave
-        auto interval = std::chrono::milliseconds(1000 / frequency);
+    std::thread([&accelBuffer]() {
+        const int sampleFrequency = accelFreq;
+        const float dataFrequency = 1.0f;
+        auto interval = std::chrono::milliseconds(1000 / sampleFrequency);
         float t = 0.0f;
         while (true) {
-            float xValue = std::sin(2 * M_PI * sineFrequency * t);
-            float yValue = std::cos(2 * M_PI * sineFrequency * t);
-            float zValue = std::tan(2 * M_PI * sineFrequency * t);
-
-            accelBuffer.append(&xValue, &yValue, &zValue, 1);
+            float x = std::sin(2 * M_PI * dataFrequency * t);
+            float y = std::cos(2 * M_PI * dataFrequency * 0.5f * t);
+            float z = std::sin(2 * M_PI * dataFrequency * (1.0f / 3.0f) * t);
+            accelBuffer.append(&x, &y, &z, 1);
             std::this_thread::sleep_for(interval);
-            t += 1.0f / frequency;
+            t += 1.0f / sampleFrequency;
         }
-    });
-    accelThread.detach();
+    }).detach();
 
-    std::thread magThread([&magBuffer]() {
-        const int frequency = magFreq;
-        const float sineFrequency = 2.0f; // 2Hz sine wave
-        auto interval = std::chrono::milliseconds(1000 / frequency);
+    std::thread([&magBuffer]() {
+        const int sampleFrequency = magFreq;
+        const float dataFrequency = 2.0f;
+        auto interval = std::chrono::milliseconds(1000 / sampleFrequency);
         float t = 0.0f;
         while (true) {
-            float xValue = std::sin(2 * M_PI * sineFrequency * t);
-            float yValue = std::cos(2 * M_PI * sineFrequency * t);
-            float zValue = std::tan(2 * M_PI * sineFrequency * t);
-
-            magBuffer.append(&xValue, &yValue, &zValue, 1);
+            float x = std::sin(2 * M_PI * dataFrequency * t);
+            float y = std::cos(2 * M_PI * dataFrequency * 0.5f * t);
+            float z = std::sin(2 * M_PI * dataFrequency * (1.0f / 3.0f) * t);
+            magBuffer.append(&x, &y, &z, 1);
             std::this_thread::sleep_for(interval);
-            t += 1.0f / frequency;
+            t += 1.0f / sampleFrequency;
         }
-    });
-    magThread.detach();
-    */
-    
-    // Run WebSocket server Thread
-    boost::asio::io_context ioc;
-    WebSocketSession server(ioc, 8000, gyroBuffer, accelBuffer, magBuffer);
-    server.run();
-    
-    std::thread socketThread([&ioc]() { ioc.run(); });
-
-    // Launch App Window
-    runApp(gyroBuffer, accelBuffer, magBuffer, 
-           gyroTimesBuffer, accelTimesBuffer, magTimesBuffer);
-
-    // Cleanup
-    ioc.stop();
-    socketThread.join();
+    }).detach();
 }
