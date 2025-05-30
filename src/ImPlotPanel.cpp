@@ -27,8 +27,6 @@ void ImPlotPanel::Draw() {
 
     // ------ New Zoom Control Section ------
     ImGui::BeginGroup();  // Group for zoom controls
-    ImGui::Text("Zoom Controls");
-    ImGui::Spacing();
     
     // Panel Zoom Slider
     ImGui::Text("Plots Height:");
