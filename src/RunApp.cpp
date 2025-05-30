@@ -14,7 +14,7 @@ void runApp(GyroBuffer &gyroBuffer, AccelBuffer& accelBuffer, MagBuffer& magBuff
             std::array<float, magBufferSize>& magTimeBuffer) 
 { 
   // Initialize window
-  InitWindow(screenWidth, screenHeight, "IMU + Attitude Estimation");
+  InitWindow(screenWidth, screenHeight, "IMU Visualization");
   SetTargetFPS(targetFrameRate);
   
   // Initialize ImGui and Plots 
