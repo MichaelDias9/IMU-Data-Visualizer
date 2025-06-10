@@ -122,6 +122,7 @@
     "print": "cpp",
     "string_view": "cpp",
     "__tree": "cpp",
-    "__threading_support": "cpp"
+    "__threading_support": "cpp",
+    "*.m": "cpp"
   }
 }

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(IMUTool LANGUAGES CXX)
 
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -9,10 +10,10 @@ cmake_policy(SET CMP0167 NEW)   # Supress warning
 find_package(Boost 1.87.0 REQUIRED COMPONENTS system thread)
 
 # Link GoogleTest
-find_package(GTest REQUIRED)
-include_directories(${GTEST_INCLUDE_DIRS})
+# find_package(GTest REQUIRED)
+# include_directories(${GTEST_INCLUDE_DIRS})
 
-# --- Fetch raylib --- #
+# --- Fetch raylib --- # 
 include(FetchContent)
 FetchContent_Declare(
     raylib
@@ -50,6 +51,8 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE 
     include
+    include/util
+    include/ui
     ${Boost_INCLUDE_DIRS}
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE 
@@ -57,7 +60,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Boost::thread
     rlImGui # Links raylib transitively
     implot  # Links imgui transitively
-    GTest::gtest GTest::gtest_main 
+    # GTest::gtest GTest::gtest_main 
 )
 
 # --- Resources --- #

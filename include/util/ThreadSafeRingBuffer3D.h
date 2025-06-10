@@ -6,9 +6,9 @@
 #include <stdexcept>
 
 template <std::size_t Capacity>
-class ThreadSafeRingBuffer {
+class ThreadSafeRingBuffer3D {
 public:
-    ThreadSafeRingBuffer() : head(0), count(0) {}
+    ThreadSafeRingBuffer3D() : head(0), count(0) {}
 
     void append(const float* xData, const float* yData, const float* zData, std::size_t len) {
         if (len > Capacity) {
@@ -16,14 +16,14 @@ public:
         }
         std::lock_guard<std::mutex> lock(mtx);
 
-        if (head + len <= 2 * Capacity) {
+        if (head + len <= 2 * Capacity) {   // No overflow
             std::copy(xData, xData + len, xBuffer.begin() + head);
             std::copy(yData, yData + len, yBuffer.begin() + head);
             std::copy(zData, zData + len, zBuffer.begin() + head);
 
             head += len;
             count = std::min(count + len, Capacity);
-        } else {
+        } else {                            // Overflow
             std::size_t overflowing_count = head + len - 2 * Capacity;
             std::size_t elements_to_keep = Capacity - len;
             std::copy(xBuffer.begin() + (head - elements_to_keep), 
@@ -45,33 +45,69 @@ public:
         }
     }
 
-    const float& at(std::size_t index) const {
-        std::lock_guard<std::mutex> lock(mtx);
-        return xBuffer[index % Capacity]; // Change later if needed to include y and z
-    }
-
     std::size_t size() const {
         std::lock_guard<std::mutex> lock(mtx);
         return count;
     }
 
-    void getRecentPointers(std::size_t N, const float** x, const float** y, const float** z) const 
-    {
+    void getRecentPointers(std::size_t N, const float** x, const float** y, const float** z, std::size_t headIndex = SIZE_MAX) const {
         if (N > Capacity) {
             throw std::out_of_range("Requested more than buffer capacity");
         }
 
         std::lock_guard<std::mutex> lock(mtx);
-        if (count < N) {
-            *x = nullptr;
-            *y = nullptr;
-            *z = nullptr;
-            return; 
+        
+        // Use current head if no specific head index was provided
+        std::size_t useHead = (headIndex == SIZE_MAX) ? head : headIndex;
+        
+        // Validation for provided head index
+        if (headIndex != SIZE_MAX) {
+            if (headIndex > 2 * Capacity) {
+                throw std::out_of_range("Head index out of range");
+            }
+            if (N > headIndex) {
+                throw std::out_of_range("Requested more elements than available from head index");
+            }
+            // Check if the provided head index is still valid (hasn't been overwritten)
+            if (headIndex > head) {
+                *x = nullptr;
+                *y = nullptr;
+                *z = nullptr;
+                return;
+            }
+        } else {
+            // Original validation for current head
+            if (count < N) {
+                *x = nullptr;
+                *y = nullptr;
+                *z = nullptr;
+                return; 
+            }
         }
 
-        *x = xBuffer.data() + (head - N);
-        *y = yBuffer.data() + (head - N);
-        *z = zBuffer.data() + (head - N);
+        *x = xBuffer.data() + (useHead - N);
+        *y = yBuffer.data() + (useHead - N);
+        *z = zBuffer.data() + (useHead - N);
+    }
+
+    float atX(std::size_t index) const {
+        std::lock_guard<std::mutex> lock(mtx);
+        return xBuffer[index];
+    }
+
+    float atY(std::size_t index) const {
+        std::lock_guard<std::mutex> lock(mtx);
+        return yBuffer[index];
+    }
+
+    float atZ(std::size_t index) const {
+        std::lock_guard<std::mutex> lock(mtx);
+        return zBuffer[index];
+    }
+
+    std::size_t getHead() const {
+        std::lock_guard<std::mutex> lock(mtx);
+        return head;
     }
 
 private:

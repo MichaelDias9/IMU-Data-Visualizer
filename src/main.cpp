@@ -1,128 +1,95 @@
 #define _USE_MATH_DEFINES
-#include <cmath>
-#include <atomic>
 #include <thread>
 #include <iostream>
-#include <chrono>
 #include <boost/asio.hpp>
 
 #include "Config.h"
+#include "Attitude.h"
+
 #include "WebSocketSession.h"
+#include "ComplementaryFilter.h"
 #include "RunApp.h"
 
-int main() {
-    GyroBuffer gyroBuffer;
-    AccelBuffer accelBuffer;
-    MagBuffer magBuffer;
-    std::array<float, gyroBufferSize> gyroTimesBuffer;
-    std::array<float, accelBufferSize> accelTimesBuffer;
-    std::array<float, magBufferSize> magTimesBuffer;
-
-    #pragma region Fill Buffers
+// Function to pre-fill the buffers with empty data
+void prefillBuffers(GyroBuffer& gyroDataBuffer, AccelBuffer& accelDataBuffer, MagBuffer& magDataBuffer, 
+                    GyroTimesBuffer& gyroTimesBuffer, AccelTimesBuffer& accelTimesBuffer, MagTimesBuffer& magTimesBuffer){    
     // Pre-fill gyro data buffer
     std::vector<float> gyroX(gyroBufferSize, 0.0f);
     std::vector<float> gyroY(gyroBufferSize, 0.0f);
     std::vector<float> gyroZ(gyroBufferSize, 0.0f);
-    gyroBuffer.append(gyroX.data(), gyroY.data(), gyroZ.data(), gyroBufferSize);
+    gyroDataBuffer.append(gyroX.data(), gyroY.data(), gyroZ.data(), gyroBufferSize);
 
     // Pre-fill accel data buffer
     std::vector<float> accelX(accelBufferSize, 0.0f);
     std::vector<float> accelY(accelBufferSize, 0.0f);
     std::vector<float> accelZ(accelBufferSize, 0.0f);
-    accelBuffer.append(accelX.data(), accelY.data(), accelZ.data(), accelBufferSize);
+    accelDataBuffer.append(accelX.data(), accelY.data(), accelZ.data(), accelBufferSize);
 
     // Pre-fill mag data buffer
     std::vector<float> magX(magBufferSize, 0.0f);
     std::vector<float> magY(magBufferSize, 0.0f);
     std::vector<float> magZ(magBufferSize, 0.0f);
-    magBuffer.append(magX.data(), magY.data(), magZ.data(), magBufferSize);
+    magDataBuffer.append(magX.data(), magY.data(), magZ.data(), magBufferSize);
 
-    // Pre-fill gyroscope time buffer
-    float timeStep = 1.0f / gyroFreq;
-    for (size_t i = 0; i < gyroBufferSize; ++i) {
-        gyroTimesBuffer[i] = -bufferSeconds + i * timeStep;
+    // Pre-fill time buffers
+    float timeStep;
+
+    // Pre-fill gyro time buffer
+    timeStep = 1.0f / gyroFreq;
+    std::array<float, gyroBufferSize> gyroTimes;
+    for (int i = 0; i < gyroBufferSize; i++) {
+        gyroTimes[i] = (i * timeStep) - bufferSeconds;
     }
+    gyroTimesBuffer.append(gyroTimes.data(), gyroBufferSize);
 
-    // Pre-fill accelerometer time buffer
+    // Pre-fill accel time buffer
     timeStep = 1.0f / accelFreq;
-    for (size_t i = 0; i < accelBufferSize; ++i) {
-        accelTimesBuffer[i] = -bufferSeconds + i * timeStep;
+    std::array<float, accelBufferSize> accelTimes;
+    for (int i = 0; i < accelBufferSize; i++) {
+        accelTimes[i] = (i * timeStep) - bufferSeconds;
     }
+    accelTimesBuffer.append(accelTimes.data(), accelBufferSize);
 
-    // Pre-fill magnetometer time buffer
+    // Pre-fill mag time buffer
     timeStep = 1.0f / magFreq;
-    for (size_t i = 0; i < magBufferSize; ++i) {
-        magTimesBuffer[i] = -bufferSeconds + i * timeStep;
+    std::array<float, magBufferSize> magTimes;
+    for (int i = 0; i < magBufferSize; i++) {
+        magTimes[i] = (i * timeStep) - bufferSeconds;
     }
-    #pragma endregion
+    magTimesBuffer.append(magTimes.data(), magBufferSize);
+}
 
-    // Optionally generate example data if testing without real data
-    /*
-    // Start data generation threads
-    std::thread gyroThread([&gyroBuffer]() {
-        const int frequency = gyroFreq;
-        const float sineFrequency = 2.0f; // 2Hz sine wave
-        auto interval = std::chrono::milliseconds(1000 / frequency);
-        float t = 0.0f;
-        while (true) {
-            float xValue = std::sin(2 * M_PI * sineFrequency * t);
-            float yValue = std::cos(2 * M_PI * sineFrequency * t);
-            float zValue = std::tan(2 * M_PI * sineFrequency * t);
+int main() {
+    // Initialize Buffers
+    GyroBuffer gyroDataBuffer;
+    AccelBuffer accelDataBuffer;
+    MagBuffer magDataBuffer;
+    GyroTimesBuffer gyroTimesBuffer;
+    AccelTimesBuffer accelTimesBuffer;
+    MagTimesBuffer magTimesBuffer;
+    prefillBuffers(gyroDataBuffer, accelDataBuffer, magDataBuffer, gyroTimesBuffer, accelTimesBuffer, magTimesBuffer);
 
-            gyroBuffer.append(&xValue, &yValue, &zValue, 1);
-            std::this_thread::sleep_for(interval);
-            t += 1.0f / frequency;
-        }
-    });
-    gyroThread.detach();
+    // Initialize the shared attitude object
+    Attitude estimatedAttitude = {0.0f, 0.0f, 0.0f, 1.0, 0.0, 0.0, 0.0}; // Roll, Pitch, Yaw, w, x, y, z
 
-    std::thread accelThread([&accelBuffer]() {
-        const int frequency = accelFreq;
-        const float sineFrequency = 2.0f; // 2Hz sine wave
-        auto interval = std::chrono::milliseconds(1000 / frequency);
-        float t = 0.0f;
-        while (true) {
-            float xValue = std::sin(2 * M_PI * sineFrequency * t);
-            float yValue = std::cos(2 * M_PI * sineFrequency * t);
-            float zValue = std::tan(2 * M_PI * sineFrequency * t);
-
-            accelBuffer.append(&xValue, &yValue, &zValue, 1);
-            std::this_thread::sleep_for(interval);
-            t += 1.0f / frequency;
-        }
-    });
-    accelThread.detach();
-
-    std::thread magThread([&magBuffer]() {
-        const int frequency = magFreq;
-        const float sineFrequency = 2.0f; // 2Hz sine wave
-        auto interval = std::chrono::milliseconds(1000 / frequency);
-        float t = 0.0f;
-        while (true) {
-            float xValue = std::sin(2 * M_PI * sineFrequency * t);
-            float yValue = std::cos(2 * M_PI * sineFrequency * t);
-            float zValue = std::tan(2 * M_PI * sineFrequency * t);
-
-            magBuffer.append(&xValue, &yValue, &zValue, 1);
-            std::this_thread::sleep_for(interval);
-            t += 1.0f / frequency;
-        }
-    });
-    magThread.detach();
-    */
+    // Create the complementary filter object for estimating the attitude
+    float alpha = compFilterAlpha;
+    int filterFrequency = compFilterFrequency;
+    const float filterTimeDelta = 1.0f / filterFrequency;
+    ComplementaryFilter complementaryFilter(alpha, filterFrequency, filterTimeDelta,
+                                            gyroDataBuffer, accelDataBuffer, gyroTimesBuffer, accelTimesBuffer, 
+                                            estimatedAttitude);
     
-    // Run WebSocket server Thread
+    // Start WebSocket Thread. Receives and timestamps sensor data and triggers complementary filter updates
     boost::asio::io_context ioc;
-    WebSocketSession server(ioc, 8000, gyroBuffer, accelBuffer, magBuffer);
-    server.run();
-    
+    WebSocketSession socketServer(ioc, 8000, gyroDataBuffer, accelDataBuffer, magDataBuffer, 
+                                  gyroTimesBuffer, accelTimesBuffer, magTimesBuffer, complementaryFilter);
     std::thread socketThread([&ioc]() { ioc.run(); });
 
-    // Launch App Window
-    runApp(gyroBuffer, accelBuffer, magBuffer, 
-           gyroTimesBuffer, accelTimesBuffer, magTimesBuffer);
+    // Run App Window
+    runApp(gyroDataBuffer, accelDataBuffer, magDataBuffer, gyroTimesBuffer, accelTimesBuffer, magTimesBuffer, estimatedAttitude, alpha);
 
-    // Cleanup
+    // Clean up on exit
     ioc.stop();
     socketThread.join();
 }

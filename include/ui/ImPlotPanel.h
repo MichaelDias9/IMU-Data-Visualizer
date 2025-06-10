@@ -1,16 +1,16 @@
 #pragma once
 #include "implot.h"
 #include "imgui.h"
-#include "ThreadSafeRingBuffer.h"
+#include "ThreadSafeRingBuffer3D.h"
 #include "Config.h"
 #include "SensorPlot.h"
 
 class ImPlotPanel {
 private:
-    int m_posX;
-    int m_posY;
-    int m_width;
-    int m_height;
+    const int m_posX;
+    const int m_posY;
+    const int m_width;
+    const int m_height;
     
     float m_vertical_zoom;   // Overall panel zoom (affects height)
     float m_horizontal_zoom; // X-axis zoom (shared across plots)
@@ -24,12 +24,12 @@ private:
 
 public:
     ImPlotPanel(int posX, int posY, int width, int height, 
-                GyroBuffer& gyroBuffer_ref,
-                AccelBuffer& accelBuffer_ref, 
-                MagBuffer& magBuffer_ref,
-                std::array<float, gyroBufferSize>& gyroTimeBuffer_ref,
-                std::array<float, accelBufferSize>& accelTimeBuffer_ref,
-                std::array<float, magBufferSize>& magTimeBuffer_ref
+                const GyroBuffer& gyroBuffer_ref,
+                const AccelBuffer& accelBuffer_ref, 
+                const MagBuffer& magBuffer_ref,
+                const GyroTimesBuffer& gyroTimeBuffer_ref,
+                const AccelTimesBuffer& accelTimeBuffer_ref,
+                const MagTimesBuffer& magTimeBuffer_ref
                 );
 
     void Draw();

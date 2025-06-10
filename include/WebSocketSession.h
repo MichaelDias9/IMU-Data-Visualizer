@@ -1,8 +1,10 @@
 #pragma once
 #include <boost/beast.hpp>
 #include <boost/asio.hpp>
+#include <atomic>
 
 #include "Config.h"
+#include "ComplementaryFilter.h"
 
 namespace beast = boost::beast;
 namespace net = boost::asio;
@@ -10,8 +12,10 @@ using tcp = boost::asio::ip::tcp;
 
 class WebSocketSession {
 public:
-    WebSocketSession(net::io_context& ioc, unsigned short port, GyroBuffer& gyrobuffer, 
-                     AccelBuffer& accelBuffer, MagBuffer& magBuffer);
+    WebSocketSession(net::io_context& ioc, unsigned short port, 
+                     GyroBuffer& gyroDataBuffer, AccelBuffer& accelDataBuffer, MagBuffer& magDataBuffer,
+                     GyroTimesBuffer& gyroTimesBuffer, AccelTimesBuffer& accelTimesBuffer, MagTimesBuffer& magTimesBuffer,
+                     ComplementaryFilter& complementaryFilter);
     
     void run();
     
@@ -24,7 +28,16 @@ private:
     std::optional<beast::websocket::stream<tcp::socket>> ws_;
     beast::flat_buffer buffer_;
 
-    GyroBuffer& gyroBuffer_;
-    AccelBuffer& accelBuffer_;
-    MagBuffer& magBuffer_;
+    GyroBuffer& gyroDataBuffer_;
+    AccelBuffer& accelDataBuffer_;
+    MagBuffer& magDataBuffer_;
+
+    GyroTimesBuffer& gyroTimesBuffer_;
+    AccelTimesBuffer& accelTimesBuffer_;
+    MagTimesBuffer& magTimesBuffer_;
+
+    ComplementaryFilter& complementaryFilter_;
+  
+    std::chrono::steady_clock::time_point firstTimestamp_;
+    bool firstDataReceived_;
 };

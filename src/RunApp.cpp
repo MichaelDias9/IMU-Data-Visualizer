@@ -1,46 +1,49 @@
 #include "RunApp.h"
 #include "Config.h"
+#include "Attitude.h"
 #include "RayLibScene.h"
 #include "ImPlotPanel.h"
 #include "ImGuiPanel.h"
-#include "ThreadSafeRingBuffer.h"
+#include "ThreadSafeRingBuffer3D.h"
+
 
 #include "rlImGui.h"
 #include "imgui.h"
 #include "implot.h"
 
 
-void runApp(GyroBuffer &gyroBuffer, AccelBuffer& accelBuffer, MagBuffer& magBuffer, 
-            std::array<float, gyroBufferSize>& gyroTimeBuffer, 
-            std::array<float, accelBufferSize>& accelTimeBuffer, 
-            std::array<float, magBufferSize>& magTimeBuffer) 
+void runApp(const GyroBuffer &gyroDataBuffer, 
+            const AccelBuffer& accelDataBuffer, 
+            const MagBuffer& magDataBuffer, 
+            const GyroTimesBuffer &gyroTimeBuffer,
+            const AccelTimesBuffer &accelTimeBuffer,
+            const MagTimesBuffer &magTimeBuffer,
+            Attitude &estimatedAttitude,
+            float& alpha_) 
 { 
-  // Initialize window
+  // Initialize window with config values
   InitWindow(screenWidth, screenHeight, "IMU + Attitude Estimation");
-  SetTargetFPS(60);
+  SetTargetFPS(targetFPS);
 
   // Initialize Raylib Scene
-  RaylibScene raylibScene(screenWidth/2, screenHeight/2, screenWidth/2, screenHeight/2);
+  RaylibScene raylibScene(screenWidth/2, screenHeight/2, screenWidth/2, screenHeight/2, estimatedAttitude);
   raylibScene.Init();
   
-  // Initialize Plots 
+  // Initialize Plots Context
   rlImGuiSetup(true);
   ImPlot::CreateContext();
-  // Enable 32 bit vertex indices for more than 64K vertices
+  // Enable 32 bit vertex indices for more vertices
   ImGuiIO& io = ImGui::GetIO();
   io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+  // Initialize Plots
   ImPlotPanel plotPanel(0, 0, screenWidth/2, screenHeight, 
-                        gyroBuffer, accelBuffer, magBuffer, gyroTimeBuffer, accelTimeBuffer, magTimeBuffer);
+                        gyroDataBuffer, accelDataBuffer, magDataBuffer, gyroTimeBuffer, accelTimeBuffer, magTimeBuffer);
 
   // Initialize GUI
-  float exampleData = 0.0f;
-  ImGuiPanel guiPanel(screenWidth/2, 0, screenWidth/2, screenHeight/2, &exampleData);
+  ImGuiPanel guiPanel(screenWidth/2, 0, screenWidth/2, screenHeight/2, estimatedAttitude, alpha_);
   
   // Run Main Loop
   while (!WindowShouldClose()) {
-    // Update frame
-    raylibScene.Update();
-
     // Draw frame
     BeginDrawing();
     ClearBackground(RAYWHITE);
@@ -48,10 +51,8 @@ void runApp(GyroBuffer &gyroBuffer, AccelBuffer& accelBuffer, MagBuffer& magBuff
     raylibScene.Draw();
       
     rlImGuiBegin();
-
     plotPanel.Draw();
     guiPanel.Draw();
-
     rlImGuiEnd();
     
     EndDrawing();

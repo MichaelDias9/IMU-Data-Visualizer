@@ -1,13 +1,21 @@
 #include <iostream>
+#include <regex>
+#include <sstream>
 
 #include "WebSocketSession.h"
 #include "Config.h"
 
-WebSocketSession::WebSocketSession(net::io_context& ioc, unsigned short port, GyroBuffer& gyroBuffer,
-                                 AccelBuffer& accelBuffer, MagBuffer& magBuffer)
-    : acceptor_(ioc, {tcp::v4(), port}),
-      gyroBuffer_(gyroBuffer), accelBuffer_(accelBuffer), magBuffer_(magBuffer)
-{
+#include "ComplementaryFilter.h"
+
+WebSocketSession::WebSocketSession(net::io_context& ioc, unsigned short port, 
+            GyroBuffer& gyroDataBuffer, AccelBuffer& accelDataBuffer, MagBuffer& magDataBuffer,
+            GyroTimesBuffer& gyroTimesBuffer, AccelTimesBuffer& accelTimesBuffer, MagTimesBuffer& magTimesBuffer,
+            ComplementaryFilter& complementaryFilter)
+    : 
+    acceptor_(ioc, {tcp::v4(), port}),
+    gyroDataBuffer_(gyroDataBuffer), accelDataBuffer_(accelDataBuffer), magDataBuffer_(magDataBuffer),
+    gyroTimesBuffer_(gyroTimesBuffer), accelTimesBuffer_(accelTimesBuffer), magTimesBuffer_(magTimesBuffer),
+    complementaryFilter_(complementaryFilter) {
     std::cout << "[Server] WebSocket server started on port " << port << std::endl;
     run();
 }
@@ -54,19 +62,81 @@ void WebSocketSession::readLoop() {
 
 void WebSocketSession::processMessage(size_t bytes) {
     std::string msg(static_cast<char*>(buffer_.data().data()), bytes);
-    //std::cout << "[Server] Received message: " << msg << std::endl;
+    bool foundData = false;
     
-    float ax, ay, az, gx, gy, gz, mx, my, mz;
-    if (sscanf(msg.c_str(), "Acc: [%f, %f, %f], Gyro: [%f, %f, %f], Mag: [%f, %f, %f]",
-              &ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz) == 9) {
-        //std::cout << "[Server] Parsed values - Acc: [" << ax << ", " << ay << ", " << az << "],
-        //                                      Gyro: [" << gx << ", " << gy << ", " << gz << "]" 
-        //                                      Mag: [" << mx << ", " << my << ", " << mz << "]" 
-        //                                      << std::endl;
-        gyroBuffer_.append(&gx, &gy, &gz, 1);
-        accelBuffer_.append(&ax, &ay, &az, 1);
-        magBuffer_.append(&mx, &my, &mz, 1);
-    } else {
-        std::cerr << "[Server] Failed to parse message" << std::endl;
+    // Current timestamp
+    auto now = std::chrono::steady_clock::now();
+    
+    // Set first timestamp if this is the first data
+    if (!firstDataReceived_) {
+        firstTimestamp_ = now;
+        firstDataReceived_ = true;
+        std::cout << "[Server] First data received - timestamp set" << std::endl;
+    }
+    
+    // Calculate time in seconds since first data
+    auto duration = now - firstTimestamp_;
+    float timeInSeconds = std::chrono::duration<float>(duration).count();
+
+    // Check if complementary filter needs to be updated
+    if (timeInSeconds > complementaryFilter_.currentTime_ + complementaryFilter_.deltaTime_) {
+        complementaryFilter_.update();
+    }
+
+    // Verify minimum message length (flags + space)
+    if (msg.size() < 4 || msg[3] != ' ') {
+        std::cerr << "[Server] Invalid message format" << std::endl;
+        return;
+    }
+
+    // Parse sensor flags
+    bool hasGyro = (msg[0] == '1');
+    bool hasAccel = (msg[1] == '1');
+    bool hasMag = (msg[2] == '1');
+    std::string dataStr = msg.substr(4);
+    
+    // Split comma-separated values
+    std::vector<float> values;
+    std::istringstream iss(dataStr);
+    std::string token;
+    while (std::getline(iss, token, ',')) {
+        try {
+            values.push_back(std::stof(token));
+        } catch (const std::exception& e) {
+            std::cerr << "[Server] Invalid float value: " << token << std::endl;
+            return;
+        }
+    }
+
+    // Validate data length
+    size_t expectedCount = (hasGyro + hasAccel + hasMag) * 3;
+    if (values.size() != expectedCount) {
+        std::cerr << "[Server] Data count mismatch. Expected " 
+                  << expectedCount << " values, got " << values.size() << std::endl;
+        return;
+    }
+
+    // Process sensor data in order
+    size_t index = 0;
+    if (hasGyro) {
+        gyroDataBuffer_.append(&values[index], &values[index+1], &values[index+2], 1);
+        gyroTimesBuffer_.append(timeInSeconds);
+        index += 3;
+        foundData = true;
+    }
+    if (hasAccel) {
+        accelDataBuffer_.append(&values[index], &values[index+1], &values[index+2], 1);
+        accelTimesBuffer_.append(timeInSeconds);
+        index += 3;
+        foundData = true;
+    }
+    if (hasMag) {
+        magDataBuffer_.append(&values[index], &values[index+1], &values[index+2], 1);
+        magTimesBuffer_.append(timeInSeconds);
+        foundData = true;
+    }
+
+    if (!foundData) {
+        std::cerr << "[Server] No valid sensor data found in message" << std::endl;
     }
 }

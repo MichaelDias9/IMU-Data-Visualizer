@@ -4,8 +4,8 @@
 #include "rlgl.h"
 
 // Constructor
-RaylibScene::RaylibScene(int originX, int originY, int width, int height)
-: m_sceneOriginX(originX), m_sceneOriginY(originY), m_sceneWidth(width), m_sceneHeight(height) {}
+RaylibScene::RaylibScene(int originX, int originY, int width, int height, const Attitude& attitude)
+: m_sceneOriginX(originX), m_sceneOriginY(originY), m_sceneWidth(width), m_sceneHeight(height), attitude_(attitude) {}
 
 // Destructor
 RaylibScene::~RaylibScene() {
@@ -31,7 +31,6 @@ void RaylibScene::Draw() {
     // First, render the 3D scene to the render texture
     BeginTextureMode(m_renderTarget);
         ClearBackground(WHITE);
-        
         BeginMode3D(m_camera);
             // Draw Grid on X-Y plane
             rlPushMatrix();
@@ -49,6 +48,25 @@ void RaylibScene::Draw() {
             DrawCylinderEx(origin, Vector3{0.0f, 10.0f, 0.0f}, axisRadius, axisRadius, axisSlices, GREEN);  // Y-axis
             DrawCylinderEx(origin, Vector3{0.0f, 0.0f, 10.0f}, axisRadius, axisRadius, axisSlices, BLUE);   // Z-axis
 
+            // Draw model with the current attitude
+            rlPushMatrix();
+                // Apply rotations in the correct order: Roll -> Pitch -> Yaw
+                Quaternion q = { attitude_.x, attitude_.y, attitude_.z, attitude_.w };
+                Matrix rotMatrix = QuaternionToMatrix(q);
+                
+                rlMultMatrixf(MatrixToFloatV(rotMatrix).v);
+
+                // Smartphone dimensions (in world units)
+                float width = 5.0f;   // X dimension
+                float height = 10.0f;  // Y dimension  
+                float depth = 1.0f;   // Z dimension (thickness)
+
+                // Draw the main body of the smartphone
+                DrawCube(Vector3{0.0f, 0.0f, 0.0f}, width, height, depth, DARKGRAY);
+                DrawCubeWires(Vector3{0.0f, 0.0f, 0.0f}, width, height, depth, BLACK);
+
+            rlPopMatrix();
+
         EndMode3D();
     EndTextureMode();
     
@@ -60,10 +78,4 @@ void RaylibScene::Draw() {
         (Vector2){ (float)m_sceneOriginX, (float)m_sceneOriginY },
         WHITE
     );
-}
-
-// Member function Update
-void RaylibScene::Update() 
-{
-
 }
